@@ -9,57 +9,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.FactCheck
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -68,6 +28,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -102,6 +63,7 @@ fun GoalFlowApp(goalsViewModel: GoalsViewModel = viewModel()) {
     val uiState by goalsViewModel.uiState.collectAsState()
     var showAddGoalDialog by remember { mutableStateOf(false) }
     var goalToEdit by remember { mutableStateOf<GoalUiModel?>(null) }
+    var goalToDelete by remember { mutableStateOf<GoalUiModel?>(null) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -156,6 +118,28 @@ fun GoalFlowApp(goalsViewModel: GoalsViewModel = viewModel()) {
         )
     }
 
+    goalToDelete?.let { goal ->
+        AlertDialog(
+            onDismissRequest = { goalToDelete = null },
+            title = { Text("Delete Target") },
+            text = { Text("Are you sure you want to delete \"${goal.name}\"? All progress data for this target will be lost.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        goalsViewModel.deleteGoal(goal.id)
+                        goalToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { goalToDelete = null }) { Text("Cancel") }
+            }
+        )
+    }
+
     Scaffold(
         bottomBar = { BottomNavigationBar(navController) },
         floatingActionButton = {
@@ -174,7 +158,7 @@ fun GoalFlowApp(goalsViewModel: GoalsViewModel = viewModel()) {
                 MyGoalsScreen(
                     goals = uiState.goals,
                     onEditGoal = { goalToEdit = it },
-                    onDeleteGoal = goalsViewModel::deleteGoal
+                    onDeleteGoal = { goalToDelete = it }
                 )
             }
             composable("checkin") {
@@ -225,9 +209,16 @@ fun GoalDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.padding(16.dp).fillMaxWidth(),
         title = { Text(if (goal == null) "Create Target" else "Edit Target") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -244,7 +235,7 @@ fun GoalDialog(
                 OutlinedTextField(
                     value = unit,
                     onValueChange = { unit = it },
-                    label = { Text("Unit") },
+                    label = { Text("Unit (e.g., steps, mins)") },
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
@@ -259,33 +250,43 @@ fun GoalDialog(
                     label = { Text("To date (YYYY-MM-DD)") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    GoalType.entries.forEach { type ->
-                        FilterChip(
-                            selected = selectedType == type,
-                            onClick = { selectedType = type },
-                            label = { Text(type.name.lowercase().replaceFirstChar { it.uppercase() }) }
-                        )
+                
+                Column {
+                    Text("Tracking Type", style = MaterialTheme.typography.labelMedium)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        GoalType.entries.forEach { type ->
+                            FilterChip(
+                                selected = selectedType == type,
+                                onClick = { selectedType = type },
+                                label = { Text(type.name.lowercase().replaceFirstChar { it.uppercase() }) }
+                            )
+                        }
                     }
                 }
+                
+                HorizontalDivider()
+                
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Enable reminder", modifier = Modifier.weight(1f))
+                    Text("Enable daily reminder", modifier = Modifier.weight(1f))
                     Switch(checked = reminderEnabled, onCheckedChange = { reminderEnabled = it })
                 }
-                OutlinedTextField(
-                    value = reminderTime,
-                    onValueChange = { reminderTime = it },
-                    label = { Text("Reminder time (HH:MM)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = reminderEnabled
-                )
-                errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                
+                if (reminderEnabled) {
+                    OutlinedTextField(
+                        value = reminderTime,
+                        onValueChange = { reminderTime = it },
+                        label = { Text("Reminder time (HH:MM)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                
+                errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         },
         confirmButton = {
@@ -300,12 +301,12 @@ fun GoalDialog(
 
                     errorMessage = when {
                         name.isBlank() -> "Target name is required."
-                        targetValue == null || targetValue <= 0f -> "Target value must be greater than zero."
+                        targetValue == null || targetValue <= 0f -> "Target value must be > 0."
                         unit.isBlank() -> "Unit is required."
                         startDate == null || endDate == null -> "Dates must use YYYY-MM-DD."
-                        endDate.isBefore(startDate) -> "To date must be on or after from date."
+                        endDate.isBefore(startDate) -> "End date cannot be before start date."
                         reminderEnabled && (hour == null || minute == null || hour !in 0..23 || minute !in 0..59) ->
-                            "Reminder time must use HH:MM."
+                            "Reminder time must be HH:MM."
                         else -> null
                     }
 
@@ -326,7 +327,7 @@ fun GoalDialog(
                     }
                 }
             ) {
-                Text(if (goal == null) "Save" else "Update")
+                Text(if (goal == null) "Create" else "Update")
             }
         },
         dismissButton = {
@@ -349,8 +350,8 @@ fun DashboardScreen(goals: List<GoalUiModel>) {
     ) {
         item {
             Column {
-                Text("Target Tracker", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text("Progress across active date ranges", color = Color.Gray)
+                Text("GoalFlow Dashboard", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text("Tracking ${activeGoals.size} active targets today", color = Color.Gray)
             }
         }
 
@@ -362,11 +363,17 @@ fun DashboardScreen(goals: List<GoalUiModel>) {
         }
 
         item {
-            Text("Current Targets", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Focusing Today", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         }
 
-        items(activeGoals) { goal ->
-            GoalCard(goal = goal)
+        if (activeGoals.isEmpty()) {
+            item {
+                Text("No targets active for today's date.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+            }
+        } else {
+            items(activeGoals) { goal ->
+                GoalCard(goal = goal)
+            }
         }
     }
 }
@@ -375,7 +382,7 @@ fun DashboardScreen(goals: List<GoalUiModel>) {
 fun MyGoalsScreen(
     goals: List<GoalUiModel>,
     onEditGoal: (GoalUiModel) -> Unit,
-    onDeleteGoal: (String) -> Unit
+    onDeleteGoal: (GoalUiModel) -> Unit
 ) {
     var selectedFilter by remember { mutableStateOf("All") }
 
@@ -410,7 +417,7 @@ fun MyGoalsScreen(
                 GoalCard(
                     goal = goal,
                     onEdit = { onEditGoal(goal) },
-                    onDelete = { onDeleteGoal(goal.id) }
+                    onDelete = { onDeleteGoal(goal) }
                 )
             }
         }
@@ -433,33 +440,40 @@ fun CheckInScreen(
         Text("Daily Check-in", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(16.dp))
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(activeGoals, key = { it.id }) { goal ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+        if (activeGoals.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No active targets to check in today.", color = Color.Gray)
+            }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(activeGoals, key = { it.id }) { goal ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(2.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(goal.name, fontWeight = FontWeight.Bold)
-                            Text(
-                                "${goal.currentValue.toInt()}/${goal.targetValue.toInt()} ${goal.unit}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(goal.dateRangeLabel, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                        }
-                        IconButton(onClick = { onIncrement(goal) }) {
-                            Icon(Icons.Default.Add, contentDescription = "Increment", tint = goal.type.color)
-                        }
-                        IconButton(onClick = { onComplete(goal) }) {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = "Complete",
-                                tint = if (goal.progress >= 1f) Color(0xFF15803D) else Color.LightGray
-                            )
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(goal.name, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "${goal.currentValue.toInt()}/${goal.targetValue.toInt()} ${goal.unit}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(goal.dateRangeLabel, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                            }
+                            IconButton(onClick = { onIncrement(goal) }) {
+                                Icon(Icons.Default.AddCircle, contentDescription = "Add progress", tint = goal.type.color)
+                            }
+                            IconButton(onClick = { onComplete(goal) }) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = "Complete today",
+                                    tint = if (goal.progress >= 1f) Color(0xFF15803D) else Color.LightGray
+                                )
+                            }
                         }
                     }
                 }
@@ -481,20 +495,27 @@ fun RemindersScreen(
     ) {
         item {
             Column {
-                Text("Reminders Management", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("Manage local reminders and review missed dates.", color = Color.Gray)
+                Text("Reminders & Reports", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("Manage notifications and track missed targets.", color = Color.Gray)
             }
         }
 
         item {
-            Text("Reminder Settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Active Reminders", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
 
-        items(uiState.goals, key = { it.id }) { goal ->
-            ReminderCard(goal = goal, onReminderChange = onReminderChange)
+        if (uiState.goals.isEmpty()) {
+            item {
+                Text("No targets created yet.", color = Color.Gray)
+            }
+        } else {
+            items(uiState.goals, key = { it.id }) { goal ->
+                ReminderCard(goal = goal, onReminderChange = onReminderChange)
+            }
         }
 
         item {
+            Spacer(Modifier.height(8.dp))
             Text("Missed Dates Report", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
 
@@ -502,14 +523,10 @@ fun RemindersScreen(
             item {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer
+                    color = MaterialTheme.colorScheme.surfaceVariant
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        Text("No missed dates recorded yet.")
+                    Box(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text("Excellent! No missed dates recorded.", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -518,6 +535,8 @@ fun RemindersScreen(
                 MissedDatesCard(report)
             }
         }
+        
+        item { Spacer(Modifier.height(40.dp)) }
     }
 }
 
@@ -529,7 +548,7 @@ fun ReminderCard(
     var reminderEnabled by remember(goal.id, goal.reminderEnabled) { mutableStateOf(goal.reminderEnabled) }
     var reminderTime by remember(goal.id, goal.reminderLabel) { mutableStateOf(goal.reminderLabel) }
 
-    Card(shape = RoundedCornerShape(16.dp)) {
+    Card(shape = RoundedCornerShape(16.dp), elevation = CardDefaults.cardElevation(2.dp)) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -552,21 +571,23 @@ fun ReminderCard(
                     }
                 )
             }
-            OutlinedTextField(
-                value = reminderTime,
-                onValueChange = { reminderTime = it },
-                label = { Text("HH:MM") },
-                enabled = reminderEnabled,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Button(
-                onClick = {
-                    val (hour, minute) = reminderTime.toTimeParts()
-                    onReminderChange(goal, reminderEnabled, hour, minute)
-                },
-                enabled = reminderEnabled
-            ) {
-                Text("Save Reminder")
+            if (reminderEnabled) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = reminderTime,
+                        onValueChange = { reminderTime = it },
+                        label = { Text("Time (HH:MM)") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    Button(
+                        onClick = {
+                            val (hour, minute) = reminderTime.toTimeParts()
+                            onReminderChange(goal, reminderEnabled, hour, minute)
+                        }
+                    ) {
+                        Text("Set")
+                    }
+                }
             }
         }
     }
@@ -574,16 +595,23 @@ fun ReminderCard(
 
 @Composable
 fun MissedDatesCard(report: MissedReportItem) {
-    Card(shape = RoundedCornerShape(16.dp)) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(report.goalName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(report.goalName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+            }
             Text(
-                report.missedDates.joinToString(separator = ", ") { it.format(dateFormatter) },
+                "Dates missed: " + report.missedDates.joinToString(separator = ", ") { it.format(dateFormatter) },
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -617,7 +645,8 @@ fun GoalCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -632,13 +661,16 @@ fun GoalCard(
                 Spacer(Modifier.size(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(goal.name, fontWeight = FontWeight.Bold)
-                    Text(goal.type.name, style = MaterialTheme.typography.labelSmall, color = goal.type.color)
-                    Text(goal.dateRangeLabel, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(goal.type.name, style = MaterialTheme.typography.labelSmall, color = goal.type.color)
+                        Text(" • ", style = MaterialTheme.typography.labelSmall)
+                        Text(goal.dateRangeLabel, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    }
                 }
                 Text("${(goal.progress * 100).toInt()}%", fontWeight = FontWeight.Black)
             }
 
-            Text("${goal.currentValue.toInt()} / ${goal.targetValue.toInt()} ${goal.unit}")
+            Text("${goal.currentValue.toInt()} / ${goal.targetValue.toInt()} ${goal.unit}", style = MaterialTheme.typography.bodyMedium)
 
             LinearProgressIndicator(
                 progress = { goal.progress },
@@ -657,12 +689,12 @@ fun GoalCard(
                 ) {
                     if (onEdit != null) {
                         IconButton(onClick = onEdit) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit target")
+                            Icon(Icons.Default.Edit, contentDescription = "Edit target", tint = Color.Gray)
                         }
                     }
                     if (onDelete != null) {
                         IconButton(onClick = onDelete) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete target")
+                            Icon(Icons.Default.Delete, contentDescription = "Delete target", tint = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
