@@ -28,6 +28,11 @@
         <receiver
             android:name=".reminders.ReminderReceiver"
             android:exported="false" />
+
+        <activity
+            android:name=".reminders.ReminderPopupActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Shops" />
     </application>
 
 </manifest>

@@ -20,14 +20,32 @@ data class GoalEntity(
     @PrimaryKey val id: String,
     val name: String,
     val category: String,
+    @ColumnInfo(name = "custom_category_name") val customCategoryName: String? = null,
     val type: String,
     @ColumnInfo(name = "target_value") val targetValue: Float,
     val unit: String,
     @ColumnInfo(name = "start_date") val startDate: String,
     @ColumnInfo(name = "end_date") val endDate: String,
+    @ColumnInfo(name = "glass_size_ml") val glassSizeMl: Int? = null,
+    @ColumnInfo(name = "wakeup_time") val wakeupTime: String? = null,
+    @ColumnInfo(name = "sleep_time") val sleepTime: String? = null,
     @ColumnInfo(name = "reminder_enabled") val reminderEnabled: Boolean,
     @ColumnInfo(name = "reminder_hour") val reminderHour: Int,
-    @ColumnInfo(name = "reminder_minute") val reminderMinute: Int
+    @ColumnInfo(name = "reminder_minute") val reminderMinute: Int,
+    @ColumnInfo(name = "multiple_reminders") val multipleReminders: String? = null // Comma-separated HH:mm
+)
+
+@Entity(tableName = "user_profile")
+data class UserProfileEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val email: String,
+    @ColumnInfo(name = "profile_picture_uri") val profilePictureUri: String? = null,
+    val age: Int? = null,
+    @ColumnInfo(name = "blood_group") val bloodGroup: String? = null,
+    val gender: String? = null,
+    @ColumnInfo(name = "weight_kg") val weightKg: Float? = null,
+    @ColumnInfo(name = "height_cm") val heightCm: Float? = null
 )
 
 @Entity(
@@ -67,9 +85,26 @@ interface GoalDao {
     suspend fun deleteGoal(goalId: String)
 }
 
-@Database(entities = [GoalEntity::class, CheckInEntity::class], version = 1, exportSchema = false)
+@Dao
+interface UserProfileDao {
+    @Query("SELECT * FROM user_profile WHERE id = 'current_profile' LIMIT 1")
+    fun observeProfileFlow(): Flow<UserProfileEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertProfile(profile: UserProfileEntity)
+
+    @Query("DELETE FROM user_profile WHERE id = 'current_profile'")
+    suspend fun clearProfile()
+}
+
+@Database(
+    entities = [GoalEntity::class, CheckInEntity::class, UserProfileEntity::class],
+    version = 3,
+    exportSchema = false
+)
 abstract class GoalDatabase : RoomDatabase() {
     abstract fun goalDao(): GoalDao
+    abstract fun userProfileDao(): UserProfileDao
 
     companion object {
         @Volatile
@@ -81,7 +116,9 @@ abstract class GoalDatabase : RoomDatabase() {
                     context.applicationContext,
                     GoalDatabase::class.java,
                     "goal_tracker.db"
-                ).build().also { instance = it }
+                )
+                .fallbackToDestructiveMigration() // Version updated, reset DB for simplicity in this dev environment
+                .build().also { instance = it }
             }
         }
     }

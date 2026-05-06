@@ -6,10 +6,13 @@ import androidx.lifecycle.viewModelScope
 import com.example.shops.data.CheckInEntity
 import com.example.shops.data.GoalDatabase
 import com.example.shops.data.GoalEntity
+import com.example.shops.data.UserProfileEntity
+import com.example.shops.model.GoalCategory
 import com.example.shops.model.GoalType
 import com.example.shops.model.GoalUiModel
 import com.example.shops.model.GoalsUiState
 import com.example.shops.model.MissedReportItem
+import com.example.shops.model.UserProfileUiModel
 import com.example.shops.reminders.ReminderReceiver
 import com.example.shops.reminders.ReminderScheduler
 import kotlinx.coroutines.flow.SharingStarted
@@ -18,71 +21,56 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.LocalTime
 import java.util.UUID
 
 class GoalsViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = GoalDatabase.getInstance(application).goalDao()
+    private val profileDao = GoalDatabase.getInstance(application).userProfileDao()
 
     val uiState: StateFlow<GoalsUiState> = combine(
         dao.getGoalsFlow(),
-        dao.getCheckInsFlow()
-    ) { goals, checkIns ->
+        dao.getCheckInsFlow(),
+        profileDao.observeProfileFlow()
+    ) { goals, checkIns, profile ->
         val today = LocalDate.now()
         val mappedGoals = goals.map { goal ->
             val currentValue = currentValueForGoal(goal, checkIns, today)
             goal.toUiModel(currentValue)
         }
+        val dailyCheckInCount = checkIns.count { it.entryDate == today.toString() }
         val reports = mappedGoals.map { goal ->
             MissedReportItem(
                 goalId = goal.id,
-                goalName = goal.name,
+                goalName = goal.finalDisplayName,
                 missedDates = missedDatesForGoal(goal, checkIns, today)
             )
         }.filter { it.missedDates.isNotEmpty() }
 
-        GoalsUiState(goals = mappedGoals, missedReports = reports)
+        GoalsUiState(
+            goals = mappedGoals,
+            missedReports = reports,
+            profile = profile?.toUiModel(),
+            dailyCheckInCount = dailyCheckInCount
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GoalsUiState())
 
     init {
         ReminderReceiver.createNotificationChannel(application)
     }
 
-    fun saveGoal(
-        id: String?,
-        name: String,
-        targetValue: Float,
-        unit: String,
-        type: GoalType,
-        startDate: LocalDate,
-        endDate: LocalDate,
-        reminderEnabled: Boolean,
-        reminderHour: Int,
-        reminderMinute: Int
-    ) {
-        val entity = GoalEntity(
-            id = id ?: UUID.randomUUID().toString(),
-            name = name,
-            category = "General",
-            type = type.name,
-            targetValue = targetValue,
-            unit = unit,
-            startDate = startDate.toString(),
-            endDate = endDate.toString(),
-            reminderEnabled = reminderEnabled,
-            reminderHour = reminderHour,
-            reminderMinute = reminderMinute
-        )
-
+    fun saveGoal(goal: GoalUiModel) {
+        val entity = goal.toEntity()
         viewModelScope.launch {
             dao.upsertGoal(entity)
-            ReminderScheduler.syncReminder(getApplication(), entity.toUiModel(0f))
+            ReminderScheduler.syncReminders(getApplication(), goal)
         }
     }
 
     fun deleteGoal(goalId: String) {
         viewModelScope.launch {
             dao.deleteGoal(goalId)
-            ReminderScheduler.cancelReminder(getApplication(), goalId)
+            ReminderScheduler.cancelAllRemindersForGoal(getApplication(), goalId)
         }
     }
 
@@ -116,19 +104,28 @@ class GoalsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun decrementGoal(goal: GoalUiModel) {
+        if (goal.currentValue <= 0f) return
+
+        viewModelScope.launch {
+            dao.insertCheckIn(
+                CheckInEntity(
+                    goalId = goal.id,
+                    entryDate = LocalDate.now().toString(),
+                    value = -1f
+                )
+            )
+        }
+    }
+
     fun updateReminder(goal: GoalUiModel, enabled: Boolean, hour: Int, minute: Int) {
-        saveGoal(
-            id = goal.id,
-            name = goal.name,
-            targetValue = goal.targetValue,
-            unit = goal.unit,
-            type = goal.type,
-            startDate = goal.startDate,
-            endDate = goal.endDate,
-            reminderEnabled = enabled,
-            reminderHour = hour,
-            reminderMinute = minute
-        )
+        saveGoal(goal.copy(reminderEnabled = enabled, reminderHour = hour, reminderMinute = minute))
+    }
+
+    fun saveProfile(profile: UserProfileUiModel) {
+        viewModelScope.launch {
+            profileDao.upsertProfile(profile.toEntity())
+        }
     }
 
     private fun currentValueForGoal(
@@ -175,18 +172,89 @@ class GoalsViewModel(application: Application) : AndroidViewModel(application) {
 }
 
 private fun GoalEntity.toUiModel(currentValue: Float): GoalUiModel {
+    val goalCategory = GoalCategory.valueOf(category)
+    val normalizedTargetValue = if (goalCategory == GoalCategory.WATER) {
+        normalizeWaterTargetToGlasses(targetValue, glassSizeMl, unit)
+    } else {
+        targetValue
+    }
+
     return GoalUiModel(
         id = id,
         name = name,
-        category = category,
+        category = goalCategory,
+        customCategoryName = customCategoryName,
         type = GoalType.valueOf(type),
-        targetValue = targetValue,
+        targetValue = normalizedTargetValue,
         currentValue = currentValue,
-        unit = unit,
+        unit = if (goalCategory == GoalCategory.WATER) "glasses" else unit,
         startDate = LocalDate.parse(startDate),
         endDate = LocalDate.parse(endDate),
+        glassSizeMl = glassSizeMl,
+        wakeupTime = wakeupTime?.let { LocalTime.parse(it) },
+        sleepTime = sleepTime?.let { LocalTime.parse(it) },
         reminderEnabled = reminderEnabled,
         reminderHour = reminderHour,
-        reminderMinute = reminderMinute
+        reminderMinute = reminderMinute,
+        multipleReminders = multipleReminders?.split(",")?.filter { it.isNotBlank() }?.map { LocalTime.parse(it) } ?: emptyList()
     )
+}
+
+private fun GoalUiModel.toEntity(): GoalEntity {
+    return GoalEntity(
+        id = id,
+        name = name,
+        category = category.name,
+        customCategoryName = customCategoryName,
+        type = type.name,
+        targetValue = targetValue,
+        unit = if (category == GoalCategory.WATER) "glasses" else unit,
+        startDate = startDate.toString(),
+        endDate = endDate.toString(),
+        glassSizeMl = glassSizeMl,
+        wakeupTime = wakeupTime?.toString(),
+        sleepTime = sleepTime?.toString(),
+        reminderEnabled = reminderEnabled,
+        reminderHour = reminderHour,
+        reminderMinute = reminderMinute,
+        multipleReminders = multipleReminders.joinToString(",") { it.toString() }
+    )
+}
+
+private fun UserProfileUiModel.toEntity(): UserProfileEntity {
+    return UserProfileEntity(
+        id = id,
+        name = name,
+        email = email,
+        profilePictureUri = profilePictureUri,
+        age = age,
+        bloodGroup = bloodGroup.ifBlank { null },
+        gender = gender.ifBlank { null },
+        weightKg = weightKg,
+        heightCm = heightCm
+    )
+}
+
+private fun UserProfileEntity.toUiModel(): UserProfileUiModel {
+    return UserProfileUiModel(
+        id = id,
+        name = name,
+        email = email,
+        profilePictureUri = profilePictureUri,
+        age = age,
+        bloodGroup = bloodGroup.orEmpty(),
+        gender = gender.orEmpty(),
+        weightKg = weightKg,
+        heightCm = heightCm
+    )
+}
+
+private fun normalizeWaterTargetToGlasses(
+    targetValue: Float,
+    glassSizeMl: Int?,
+    unit: String
+): Float {
+    if (glassSizeMl == null || glassSizeMl <= 0) return targetValue
+    if (!unit.equals("Liters", ignoreCase = true)) return targetValue
+    return ((targetValue * 1000f) / glassSizeMl).coerceAtLeast(1f)
 }
