@@ -128,13 +128,13 @@ private fun ProfileScreenPreview() {
     ShopsTheme {
         ProfileScreen(
             profile = UserProfileUiModel(
-                name = "Jahid",
-                email = "jahid@example.com",
-                age = 27,
-                bloodGroup = "O+",
-                gender = "Male",
-                weightKg = 70f,
-                heightCm = 172f
+                name = "User",
+                email = "User@example.com",
+                age = 0,
+                bloodGroup = "",
+                gender = "",
+                weightKg = 0f,
+                heightCm = 0f
             ),
             onSaveProfile = {}
         )

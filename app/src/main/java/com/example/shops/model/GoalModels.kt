@@ -79,6 +79,43 @@ data class GoalsUiState(
     val dailyCheckInCount: Int = 0
 )
 
+enum class ScreenTimeStatus(
+    val label: String,
+    val guideline: String
+) {
+    OPTIMAL(
+        label = "Optimal",
+        guideline = "Aim to keep recreational screen exposure close to 2 hours per day when possible."
+    ),
+    HEALTHY(
+        label = "Within Healthy Limit",
+        guideline = "Try to stay under 4 hours daily and take a short break every 30 to 60 minutes."
+    ),
+    HIGH(
+        label = "Exceeds Recommended Limit",
+        guideline = "Reduce non-essential screen time, add movement breaks, and avoid long continuous sessions."
+    )
+}
+
+data class ScreenTimeSummary(
+    val totalMillis: Long,
+    val status: ScreenTimeStatus
+) {
+    val totalMinutes: Long
+        get() = totalMillis / 60_000L
+
+    val formattedDuration: String
+        get() {
+            val hours = totalMinutes / 60
+            val minutes = totalMinutes % 60
+            return if (hours > 0) {
+                "${hours}h ${minutes}m"
+            } else {
+                "${minutes}m"
+            }
+        }
+}
+
 data class UserProfileUiModel(
     val id: String = "current_profile",
     val name: String = "",
