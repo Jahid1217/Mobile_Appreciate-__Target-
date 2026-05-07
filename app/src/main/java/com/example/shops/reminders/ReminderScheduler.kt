@@ -4,14 +4,26 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import com.example.shops.data.GoalDatabase
+import com.example.shops.data.GoalEntity
 import com.example.shops.model.GoalCategory
 import com.example.shops.model.GoalUiModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 
 object ReminderScheduler {
+
+    suspend fun syncAllReminders(context: Context) = withContext(Dispatchers.IO) {
+        val goals = GoalDatabase.getInstance(context).goalDao().getAllGoals()
+        goals.forEach { goal ->
+            syncReminders(context, goal.toReminderUiModel())
+        }
+    }
 
     fun syncReminders(context: Context, goal: GoalUiModel) {
         cancelAllRemindersForGoal(context, goal.id)
@@ -133,11 +145,20 @@ object ReminderScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        alarmManager.setExactAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            triggerAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-            pendingIntent
-        )
+        val triggerAtMillis = triggerAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()) {
+            alarmManager.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            )
+        } else {
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            )
+        }
     }
 
     private fun buildCancelIntent(context: Context, id: String): PendingIntent {
@@ -149,4 +170,31 @@ object ReminderScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
+}
+
+private fun GoalEntity.toReminderUiModel(): GoalUiModel {
+    val goalCategory = GoalCategory.valueOf(category)
+    return GoalUiModel(
+        id = id,
+        name = name,
+        category = goalCategory,
+        customCategoryName = customCategoryName,
+        type = com.example.shops.model.GoalType.valueOf(type),
+        targetValue = targetValue,
+        currentValue = 0f,
+        unit = unit,
+        startDate = LocalDate.parse(startDate),
+        endDate = LocalDate.parse(endDate),
+        glassSizeMl = glassSizeMl,
+        wakeupTime = wakeupTime?.let(LocalTime::parse),
+        sleepTime = sleepTime?.let(LocalTime::parse),
+        reminderEnabled = reminderEnabled,
+        reminderHour = reminderHour,
+        reminderMinute = reminderMinute,
+        multipleReminders = multipleReminders
+            ?.split(",")
+            ?.filter { it.isNotBlank() }
+            ?.map(LocalTime::parse)
+            ?: emptyList()
+    )
 }

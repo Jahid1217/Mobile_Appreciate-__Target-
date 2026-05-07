@@ -57,6 +57,9 @@ class GoalsViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         ReminderReceiver.createNotificationChannel(application)
+        viewModelScope.launch {
+            ReminderScheduler.syncAllReminders(application)
+        }
     }
 
     fun saveGoal(goal: GoalUiModel) {

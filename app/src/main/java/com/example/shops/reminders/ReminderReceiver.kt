@@ -6,7 +6,10 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.shops.R
@@ -41,14 +44,22 @@ class ReminderReceiver : BroadcastReceiver() {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setContentIntent(pendingIntent)
             .setFullScreenIntent(pendingIntent, true)
+            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
+            .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
             .setAutoCancel(true)
             .build()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ActivityCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
 
         NotificationManagerCompat.from(context).notify(reminderId.hashCode(), notification)
     }
 
     companion object {
-        const val CHANNEL_ID = "goal_reminders"
+        const val CHANNEL_ID = "goal_reminders_v2"
         const val EXTRA_GOAL_ID = "extra_goal_id"
         const val EXTRA_GOAL_NAME = "extra_goal_name"
         const val EXTRA_REMINDER_ID = "extra_reminder_id"
@@ -65,6 +76,14 @@ class ReminderReceiver : BroadcastReceiver() {
             ).apply {
                 description = "Daily reminders for tracked targets."
                 setShowBadge(true)
+                enableVibration(true)
+                setSound(
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
             }
             manager.createNotificationChannel(channel)
         }

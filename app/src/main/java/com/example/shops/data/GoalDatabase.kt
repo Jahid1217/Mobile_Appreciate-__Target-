@@ -72,6 +72,9 @@ interface GoalDao {
     @Query("SELECT * FROM goals ORDER BY start_date ASC, name ASC")
     fun getGoalsFlow(): Flow<List<GoalEntity>>
 
+    @Query("SELECT * FROM goals ORDER BY start_date ASC, name ASC")
+    suspend fun getAllGoals(): List<GoalEntity>
+
     @Query("SELECT * FROM check_ins")
     fun getCheckInsFlow(): Flow<List<CheckInEntity>>
 
