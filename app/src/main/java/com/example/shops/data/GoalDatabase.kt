@@ -26,6 +26,7 @@ data class GoalEntity(
     val unit: String,
     @ColumnInfo(name = "start_date") val startDate: String,
     @ColumnInfo(name = "end_date") val endDate: String,
+    @ColumnInfo(name = "created_at") val createdAt: String,
     @ColumnInfo(name = "glass_size_ml") val glassSizeMl: Int? = null,
     @ColumnInfo(name = "wakeup_time") val wakeupTime: String? = null,
     @ColumnInfo(name = "sleep_time") val sleepTime: String? = null,
@@ -75,6 +76,9 @@ interface GoalDao {
     @Query("SELECT * FROM goals ORDER BY start_date ASC, name ASC")
     suspend fun getAllGoals(): List<GoalEntity>
 
+    @Query("SELECT * FROM goals WHERE id = :goalId LIMIT 1")
+    suspend fun getGoalById(goalId: String): GoalEntity?
+
     @Query("SELECT * FROM check_ins")
     fun getCheckInsFlow(): Flow<List<CheckInEntity>>
 
@@ -102,7 +106,7 @@ interface UserProfileDao {
 
 @Database(
     entities = [GoalEntity::class, CheckInEntity::class, UserProfileEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class GoalDatabase : RoomDatabase() {

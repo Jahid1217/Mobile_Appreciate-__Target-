@@ -19,7 +19,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.shops.model.UserProfileUiModel
-import com.example.shops.ui.components.profile.DashboardProfileHeader
+import com.example.shops.ui.components.AppScreenHeader
 import com.example.shops.ui.components.profile.InfoPill
 import com.example.shops.ui.components.profile.ProfileSummaryCard
 import com.example.shops.ui.theme.ShopsTheme
@@ -61,14 +61,19 @@ fun ProfileScreen(
         contentPadding = PaddingValues(vertical = 20.dp, horizontal = 16.dp)
     ) {
         item {
-            Text("User Profile", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("Update your personal details and profile picture.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            AppScreenHeader(
+                title = "User profile",
+                subtitle = "Keep your health details current so targets, reminders, and summaries stay more useful."
+            )
         }
         item {
             ProfileSummaryCard(profile = previewProfile, onPickImage = { imagePicker.launch("image/*") })
         }
         item {
-            Card(shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)) {
+            Card(
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Text("Personal Information", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())

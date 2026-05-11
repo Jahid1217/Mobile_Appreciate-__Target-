@@ -75,52 +75,64 @@ fun DashboardProfileHeader(profile: UserProfileUiModel?, onOpenProfile: () -> Un
         onClick = onOpenProfile,
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (profile == null) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer
+            containerColor = Color.Transparent
         )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        Box(
+            modifier = Modifier.background(
+                Brush.linearGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primaryContainer,
+                        MaterialTheme.colorScheme.secondaryContainer,
+                        MaterialTheme.colorScheme.tertiaryContainer
+                    )
+                )
+            )
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                ProfileAvatar(profile = profile, size = 72.dp)
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        profile?.name?.ifBlank { "Your Profile" } ?: "Your Profile",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        profile?.email?.ifBlank { "Tap to complete your profile" } ?: "Tap to complete your profile",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (profile?.bmi != null) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AssistChip(onClick = onOpenProfile, label = { Text("BMI ${profile.bmiLabel}") })
-                            AssistChip(onClick = onOpenProfile, label = { Text(profile.healthStatus) })
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    ProfileAvatar(profile = profile, size = 72.dp)
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            profile?.name?.ifBlank { "Your Profile" } ?: "Your Profile",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            profile?.email?.ifBlank { "Tap to complete your profile" } ?: "Tap to complete your profile",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (profile?.bmi != null) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                AssistChip(onClick = onOpenProfile, label = { Text("BMI ${profile.bmiLabel}") })
+                                AssistChip(onClick = onOpenProfile, label = { Text(profile.healthStatus) })
+                            }
                         }
                     }
+                    Icon(
+                        Icons.Rounded.ArrowForwardIos,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                Icon(
-                    Icons.Rounded.ArrowForwardIos,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+
+                ScreenTimeCard(
+                    summary = screenTimeState.summary,
+                    hasUsageAccess = screenTimeState.hasUsageAccess,
+                    onGrantAccess = {
+                        context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
                 )
             }
-
-            ScreenTimeCard(
-                summary = screenTimeState.summary,
-                hasUsageAccess = screenTimeState.hasUsageAccess,
-                onGrantAccess = {
-                    context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }
-            )
         }
     }
 }
@@ -252,7 +264,7 @@ private fun ScreenTimeCard(
 
 @Composable
 fun ProfileSummaryCard(profile: UserProfileUiModel, onPickImage: () -> Unit) {
-    Card(shape = RoundedCornerShape(24.dp)) {
+    Card(shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Box(
             Modifier
                 .fillMaxWidth()

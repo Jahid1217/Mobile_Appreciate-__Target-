@@ -11,18 +11,22 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.TaskAlt
+import androidx.compose.material.icons.rounded.Today
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.shops.model.GoalCategory
 import com.example.shops.model.GoalType
 import com.example.shops.model.GoalUiModel
+import com.example.shops.ui.components.AppScreenHeader
 import com.example.shops.ui.components.CheckInCard
 import com.example.shops.ui.components.EmptyState
+import com.example.shops.ui.components.InfoCard
 import com.example.shops.ui.theme.ShopsTheme
 import java.time.LocalDate
 
@@ -38,9 +42,27 @@ fun CheckInScreen(
     }
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Spacer(Modifier.height(20.dp))
-        Text("Daily Check-in", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text(LocalDate.now().toString(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AppScreenHeader(
+            title = "Daily check-in",
+            subtitle = "Log small actions consistently. Quick updates compound faster than occasional perfect days.",
+            trailingContent = {
+                Surface(shape = androidx.compose.foundation.shape.CircleShape, color = MaterialTheme.colorScheme.surface) {
+                    Icon(
+                        imageVector = Icons.Rounded.Today,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+        )
         Spacer(Modifier.height(16.dp))
+        InfoCard(
+            icon = Icons.Rounded.TaskAlt,
+            color = MaterialTheme.colorScheme.secondary,
+            text = "${active.size} active goal${if (active.size == 1) "" else "s"} remaining for ${LocalDate.now()}."
+        )
+        Spacer(Modifier.height(12.dp))
         if (active.isEmpty()) {
             EmptyState(Icons.Rounded.TaskAlt, "Nothing to check in today!\nAdd a goal to get started.")
         } else {

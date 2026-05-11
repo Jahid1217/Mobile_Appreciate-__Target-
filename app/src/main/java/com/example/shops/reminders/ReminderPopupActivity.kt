@@ -55,11 +55,14 @@ class ReminderPopupActivity : ComponentActivity() {
                 val uiState by goalsViewModel.uiState.collectAsState()
                 val goalId = intent.getStringExtra(ReminderReceiver.EXTRA_GOAL_ID).orEmpty()
                 val reminderId = intent.getStringExtra(ReminderReceiver.EXTRA_REMINDER_ID) ?: goalId
-                val prompt = intent.getStringExtra(ReminderReceiver.EXTRA_GOAL_NAME).orEmpty()
+                val title = intent.getStringExtra(ReminderReceiver.EXTRA_NOTIFICATION_TITLE).orEmpty()
+                val prompt = intent.getStringExtra(ReminderReceiver.EXTRA_NOTIFICATION_BODY)
+                    ?: intent.getStringExtra(ReminderReceiver.EXTRA_GOAL_NAME).orEmpty()
                 val goal = uiState.goals.firstOrNull { it.id == goalId }
 
                 ReminderPopupContent(
                     goal = goal,
+                    title = title,
                     prompt = prompt,
                     dailyCheckInCount = uiState.dailyCheckInCount,
                     onDone = {
@@ -91,6 +94,7 @@ class ReminderPopupActivity : ComponentActivity() {
 @Composable
 private fun ReminderPopupContent(
     goal: GoalUiModel?,
+    title: String,
     prompt: String,
     dailyCheckInCount: Int,
     onDone: () -> Unit,
@@ -117,7 +121,7 @@ private fun ReminderPopupContent(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Icon(Icons.Rounded.Alarm, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Reminder", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                            Text(title.ifBlank { "Reminder" }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                             Text(goal?.finalDisplayName ?: "Target", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                         }
                     }

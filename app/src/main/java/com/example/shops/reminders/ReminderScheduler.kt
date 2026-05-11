@@ -15,6 +15,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
+import kotlin.math.roundToInt
 
 object ReminderScheduler {
 
@@ -33,27 +34,61 @@ object ReminderScheduler {
         when (goal.category) {
             GoalCategory.WATER -> scheduleWaterReminders(context, goal)
             GoalCategory.WALKING -> scheduleEndOfDayReminder(context, goal)
-            GoalCategory.WAKEUP -> goal.wakeupTime?.let { scheduleSingleReminder(context, goal.id, goal.id, goal.finalDisplayName, it, isAlarm = true) }
-            GoalCategory.SLEEPING -> goal.sleepTime?.let { scheduleSingleReminder(context, goal.id, goal.id, goal.finalDisplayName, it) }
+            GoalCategory.WAKEUP -> goal.wakeupTime?.let {
+                scheduleSingleReminder(
+                    context = context,
+                    requestId = goal.id,
+                    goal = goal,
+                    title = "Wake-up reminder",
+                    message = "It's time to wake up for ${goal.finalDisplayName}.",
+                    time = it,
+                    isAlarm = true
+                )
+            }
+            GoalCategory.SLEEPING -> goal.sleepTime?.let {
+                scheduleSingleReminder(
+                    context = context,
+                    requestId = goal.id,
+                    goal = goal,
+                    title = "Sleep reminder",
+                    message = "It's time to wind down for ${goal.finalDisplayName}.",
+                    time = it
+                )
+            }
             GoalCategory.OTHER -> {
                 goal.multipleReminders.forEachIndexed { index, time ->
-                    scheduleSingleReminder(context, "${goal.id}_$index", goal.id, goal.finalDisplayName, time)
+                    scheduleSingleReminder(
+                        context = context,
+                        requestId = "${goal.id}_$index",
+                        goal = goal,
+                        title = "Custom reminder",
+                        message = "Reminder for ${goal.finalDisplayName}.",
+                        time = time
+                    )
                 }
             }
             else -> {
-                val time = LocalTime.of(goal.reminderHour, goal.reminderMinute)
-                scheduleSingleReminder(context, goal.id, goal.id, goal.finalDisplayName, time)
+                scheduleSingleReminder(
+                    context = context,
+                    requestId = goal.id,
+                    goal = goal,
+                    title = "Goal reminder",
+                    message = "Time to check in for ${goal.finalDisplayName}."
+                )
             }
         }
     }
 
     private fun scheduleWaterReminders(context: Context, goal: GoalUiModel) {
-        val start = goal.wakeupTime ?: LocalTime.of(7, 0)
+        val creationTimeAnchor = if (goal.startDate == goal.createdAt.toLocalDate()) {
+            goal.createdAt.toLocalTime()
+        } else {
+            null
+        }
+        val start = maxOf(goal.wakeupTime ?: LocalTime.of(7, 0), creationTimeAnchor ?: LocalTime.MIN)
         val end = goal.sleepTime ?: LocalTime.of(22, 0)
-        
-        val glasses = if (goal.glassSizeMl != null && goal.glassSizeMl > 0) {
-            (goal.targetValue * 1000 / goal.glassSizeMl).toInt()
-        } else 8
+
+        val glasses = goal.targetValue.roundToInt().coerceAtLeast(1)
 
         if (glasses <= 0) return
 
@@ -62,38 +97,49 @@ object ReminderScheduler {
         val duration = if (endMinutes > startMinutes) endMinutes - startMinutes else (24 * 60 - startMinutes) + endMinutes
         
         val interval = duration / glasses
-        
+
         for (i in 1..glasses) {
             val reminderTime = start.plusMinutes((i * interval).toLong())
-            scheduleSingleReminder(context, "${goal.id}_$i", goal.id, "Time to drink water! (Glass $i/$glasses)", reminderTime)
+            scheduleSingleReminder(
+                context = context,
+                requestId = "${goal.id}_$i",
+                goal = goal,
+                title = "Water reminder",
+                message = "Time to drink water. Glass $i of $glasses.",
+                time = reminderTime
+            )
         }
     }
 
     private fun scheduleEndOfDayReminder(context: Context, goal: GoalUiModel) {
-        // Schedule for 9 PM
-        scheduleSingleReminder(context, goal.id, goal.id, "Steps Check: Did you reach your goal of ${goal.targetValue.toInt()} steps?", LocalTime.of(21, 0))
+        scheduleSingleReminder(
+            context = context,
+            requestId = goal.id,
+            goal = goal,
+            title = "Walking check-in",
+            message = "Did you reach ${goal.targetValue.toInt()} steps today?",
+            time = LocalTime.of(21, 0)
+        )
     }
 
     private fun scheduleSingleReminder(
         context: Context,
         requestId: String,
-        goalId: String,
+        goal: GoalUiModel,
+        title: String,
         message: String,
-        time: LocalTime,
+        time: LocalTime = LocalTime.of(goal.reminderHour, goal.reminderMinute),
         isAlarm: Boolean = false
     ) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val now = LocalDateTime.now()
-        var triggerAt = LocalDateTime.of(LocalDate.now(), time)
-        
-        if (!triggerAt.isAfter(now)) {
-            triggerAt = triggerAt.plusDays(1)
-        }
+        val triggerAt = nextTriggerAt(goal, time) ?: return
 
         val intent = Intent(context, ReminderReceiver::class.java).apply {
-            putExtra(ReminderReceiver.EXTRA_GOAL_ID, goalId)
-            putExtra(ReminderReceiver.EXTRA_GOAL_NAME, message)
+            putExtra(ReminderReceiver.EXTRA_GOAL_ID, goal.id)
+            putExtra(ReminderReceiver.EXTRA_GOAL_NAME, goal.finalDisplayName)
             putExtra(ReminderReceiver.EXTRA_REMINDER_ID, requestId)
+            putExtra(ReminderReceiver.EXTRA_NOTIFICATION_TITLE, title)
+            putExtra(ReminderReceiver.EXTRA_NOTIFICATION_BODY, message)
             if (isAlarm) putExtra("IS_ALARM", true)
         }
 
@@ -104,20 +150,26 @@ object ReminderScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        alarmManager.setInexactRepeating(
-            AlarmManager.RTC_WAKEUP,
-            triggerAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-            AlarmManager.INTERVAL_DAY,
-            pendingIntent
-        )
+        val triggerAtMillis = triggerAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()) {
+            alarmManager.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            )
+        } else {
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            )
+        }
     }
 
     fun cancelAllRemindersForGoal(context: Context, goalId: String) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        // Cancel base ID
-            alarmManager.cancel(buildCancelIntent(context, goalId))
-        // Cancel possible multiple reminders (up to 24 for water/other)
-        for (i in 0..24) {
+        alarmManager.cancel(buildCancelIntent(context, goalId))
+        for (i in 0..64) {
             alarmManager.cancel(buildCancelIntent(context, "${goalId}_$i"))
         }
     }
@@ -170,9 +222,34 @@ object ReminderScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
+
+    private fun nextTriggerAt(goal: GoalUiModel, time: LocalTime): LocalDateTime? {
+        val now = LocalDateTime.now()
+        val today = LocalDate.now()
+
+        if (today.isAfter(goal.endDate)) return null
+
+        val baseDate = when {
+            today.isBefore(goal.startDate) -> goal.startDate
+            else -> today
+        }
+
+        val scheduledTime = if (baseDate.isAfter(goal.createdAt.toLocalDate())) {
+            time
+        } else {
+            maxOf(time, goal.createdAt.toLocalTime())
+        }
+
+        var triggerAt = LocalDateTime.of(baseDate, scheduledTime)
+        if (!triggerAt.isAfter(now)) {
+            triggerAt = triggerAt.plusDays(1)
+        }
+
+        return if (triggerAt.toLocalDate().isAfter(goal.endDate)) null else triggerAt
+    }
 }
 
-private fun GoalEntity.toReminderUiModel(): GoalUiModel {
+internal fun GoalEntity.toReminderUiModel(): GoalUiModel {
     val goalCategory = GoalCategory.valueOf(category)
     return GoalUiModel(
         id = id,
@@ -185,6 +262,7 @@ private fun GoalEntity.toReminderUiModel(): GoalUiModel {
         unit = unit,
         startDate = LocalDate.parse(startDate),
         endDate = LocalDate.parse(endDate),
+        createdAt = LocalDateTime.parse(createdAt),
         glassSizeMl = glassSizeMl,
         wakeupTime = wakeupTime?.let(LocalTime::parse),
         sleepTime = sleepTime?.let(LocalTime::parse),

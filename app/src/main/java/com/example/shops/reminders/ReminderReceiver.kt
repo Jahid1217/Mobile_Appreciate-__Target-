@@ -12,7 +12,11 @@ import android.os.Build
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.example.shops.data.GoalDatabase
 import com.example.shops.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -21,12 +25,17 @@ class ReminderReceiver : BroadcastReceiver() {
         val goalId = intent.getStringExtra(EXTRA_GOAL_ID) ?: return
         val goalName = intent.getStringExtra(EXTRA_GOAL_NAME) ?: "Target"
         val reminderId = intent.getStringExtra(EXTRA_REMINDER_ID) ?: goalId
+        val notificationTitle = intent.getStringExtra(EXTRA_NOTIFICATION_TITLE) ?: "Reminder"
+        val notificationBody = intent.getStringExtra(EXTRA_NOTIFICATION_BODY)
+            ?: "Time to check in for $goalName."
 
         val popupIntent = Intent(context, ReminderPopupActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(EXTRA_GOAL_ID, goalId)
             putExtra(EXTRA_GOAL_NAME, goalName)
             putExtra(EXTRA_REMINDER_ID, reminderId)
+            putExtra(EXTRA_NOTIFICATION_TITLE, notificationTitle)
+            putExtra(EXTRA_NOTIFICATION_BODY, notificationBody)
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
@@ -37,9 +46,9 @@ class ReminderReceiver : BroadcastReceiver() {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Reminder")
-            .setContentText(goalName)
-            .setStyle(NotificationCompat.BigTextStyle().bigText("Target: $goalName"))
+            .setContentTitle(notificationTitle)
+            .setContentText(notificationBody)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(notificationBody))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setContentIntent(pendingIntent)
@@ -49,13 +58,22 @@ class ReminderReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ActivityCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        val pendingResult = goAsync()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ActivityCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
-            return
+            NotificationManagerCompat.from(context).notify(reminderId.hashCode(), notification)
         }
 
-        NotificationManagerCompat.from(context).notify(reminderId.hashCode(), notification)
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                GoalDatabase.getInstance(context).goalDao().getGoalById(goalId)?.let { goalEntity ->
+                    ReminderScheduler.syncReminders(context.applicationContext, goalEntity.toReminderUiModel())
+                }
+            } finally {
+                pendingResult.finish()
+            }
+        }
     }
 
     companion object {
@@ -63,6 +81,8 @@ class ReminderReceiver : BroadcastReceiver() {
         const val EXTRA_GOAL_ID = "extra_goal_id"
         const val EXTRA_GOAL_NAME = "extra_goal_name"
         const val EXTRA_REMINDER_ID = "extra_reminder_id"
+        const val EXTRA_NOTIFICATION_TITLE = "extra_notification_title"
+        const val EXTRA_NOTIFICATION_BODY = "extra_notification_body"
         const val EXTRA_IS_SNOOZED = "extra_is_snoozed"
 
         fun createNotificationChannel(context: Context) {

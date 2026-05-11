@@ -4,6 +4,8 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.FactCheck
@@ -12,6 +14,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.foundation.layout.padding
@@ -62,6 +65,7 @@ fun GoalFlowApp(goalsViewModel: GoalsViewModel = viewModel()) {
 
     if (showAddGoalDialog) {
         GoalDialog(
+            existingGoals = uiState.goals,
             onDismiss = { showAddGoalDialog = false },
             onConfirm = {
                 goalsViewModel.saveGoal(it)
@@ -73,6 +77,7 @@ fun GoalFlowApp(goalsViewModel: GoalsViewModel = viewModel()) {
     goalToEdit?.let { goal ->
         GoalDialog(
             goal = goal,
+            existingGoals = uiState.goals,
             onDismiss = { goalToEdit = null },
             onConfirm = {
                 goalsViewModel.saveGoal(it)
@@ -105,11 +110,15 @@ fun GoalFlowApp(goalsViewModel: GoalsViewModel = viewModel()) {
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets.navigationBars,
         bottomBar = { BottomNavigationBar(navController, navItems) },
         floatingActionButton = {
             LargeFloatingActionButton(
                 onClick = { showAddGoalDialog = true },
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(20.dp),
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
                 Icon(Icons.Rounded.Add, contentDescription = "Add Target")
             }

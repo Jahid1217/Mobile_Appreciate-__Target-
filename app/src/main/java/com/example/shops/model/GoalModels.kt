@@ -2,6 +2,7 @@ package com.example.shops.model
 
 import androidx.compose.ui.graphics.Color
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
@@ -36,6 +37,7 @@ data class GoalUiModel(
     val unit: String,
     val startDate: LocalDate,
     val endDate: LocalDate,
+    val createdAt: LocalDateTime = LocalDateTime.now(),
     val glassSizeMl: Int? = null,
     val wakeupTime: LocalTime? = null,
     val sleepTime: LocalTime? = null,
@@ -72,9 +74,36 @@ data class MissedReportItem(
     val missedDates: List<LocalDate>
 )
 
+data class GoalReportEntry(
+    val goalId: String,
+    val goalName: String,
+    val goalCategory: GoalCategory,
+    val goalType: GoalType,
+    val date: LocalDate,
+    val actualValue: Float,
+    val expectedValue: Float,
+    val reminderEnabled: Boolean
+) {
+    val normalizedProgress: Float
+        get() = if (expectedValue > 0f) (actualValue / expectedValue).coerceAtLeast(0f) else 0f
+
+    val isCompleted: Boolean
+        get() = when (goalType) {
+            GoalType.DAILY -> actualValue >= expectedValue
+            GoalType.MONTHLY, GoalType.YEARLY -> actualValue > 0f
+        }
+
+    val isMissed: Boolean
+        get() = when (goalType) {
+            GoalType.DAILY -> actualValue < expectedValue
+            GoalType.MONTHLY, GoalType.YEARLY -> actualValue <= 0f
+        }
+}
+
 data class GoalsUiState(
     val goals: List<GoalUiModel> = emptyList(),
     val missedReports: List<MissedReportItem> = emptyList(),
+    val reportEntries: List<GoalReportEntry> = emptyList(),
     val profile: UserProfileUiModel? = null,
     val dailyCheckInCount: Int = 0
 )

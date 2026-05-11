@@ -43,12 +43,14 @@ import com.example.shops.ui.components.initialTargetValueText
 import com.example.shops.ui.components.litersToGlasses
 import com.example.shops.ui.theme.ShopsTheme
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GoalDialog(
     goal: GoalUiModel? = null,
+    existingGoals: List<GoalUiModel> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (GoalUiModel) -> Unit
 ) {
@@ -225,6 +227,19 @@ fun GoalDialog(
                         errorMessage = "End date must be after start date."
                         return@Button
                     }
+                    val finalTargetName = if (category == GoalCategory.OTHER) customName.trim() else category.displayName
+                    if (finalTargetName.isBlank()) {
+                        errorMessage = "Target name is required."
+                        return@Button
+                    }
+                    val hasDuplicateTarget = existingGoals.any { existing ->
+                        existing.id != goal?.id &&
+                            existing.finalDisplayName.trim().equals(finalTargetName, ignoreCase = true)
+                    }
+                    if (hasDuplicateTarget) {
+                        errorMessage = "\"$finalTargetName\" is already assigned. Each target can only be added once."
+                        return@Button
+                    }
                     val wakeupTime = when (category) {
                         GoalCategory.WATER, GoalCategory.WAKEUP -> LocalTime.parse(wakeupTimeText)
                         else -> null
@@ -249,6 +264,7 @@ fun GoalDialog(
                             unit = if (category == GoalCategory.WATER) "glasses" else unit,
                             startDate = startDate,
                             endDate = endDate,
+                            createdAt = goal?.createdAt ?: LocalDateTime.now(),
                             glassSizeMl = glassSizeText.toIntOrNull(),
                             wakeupTime = wakeupTime,
                             sleepTime = sleepTime,

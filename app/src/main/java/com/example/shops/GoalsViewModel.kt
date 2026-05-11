@@ -8,6 +8,7 @@ import com.example.shops.data.GoalDatabase
 import com.example.shops.data.GoalEntity
 import com.example.shops.data.UserProfileEntity
 import com.example.shops.model.GoalCategory
+import com.example.shops.model.GoalReportEntry
 import com.example.shops.model.GoalType
 import com.example.shops.model.GoalUiModel
 import com.example.shops.model.GoalsUiState
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.util.UUID
 
@@ -38,18 +40,25 @@ class GoalsViewModel(application: Application) : AndroidViewModel(application) {
             val currentValue = currentValueForGoal(goal, checkIns, today)
             goal.toUiModel(currentValue)
         }
+        val reportEntries = buildReportEntries(mappedGoals, checkIns, today)
         val dailyCheckInCount = checkIns.count { it.entryDate == today.toString() }
-        val reports = mappedGoals.map { goal ->
-            MissedReportItem(
-                goalId = goal.id,
-                goalName = goal.finalDisplayName,
-                missedDates = missedDatesForGoal(goal, checkIns, today)
-            )
-        }.filter { it.missedDates.isNotEmpty() }
+        val reports = reportEntries
+            .filter { it.isMissed }
+            .groupBy { it.goalId }
+            .mapNotNull { (goalId, entries) ->
+                val goal = mappedGoals.find { it.id == goalId } ?: return@mapNotNull null
+                MissedReportItem(
+                    goalId = goalId,
+                    goalName = goal.finalDisplayName,
+                    missedDates = entries.map { it.date }.sorted()
+                )
+            }
+            .filter { it.missedDates.isNotEmpty() }
 
         GoalsUiState(
             goals = mappedGoals,
             missedReports = reports,
+            reportEntries = reportEntries,
             profile = profile?.toUiModel(),
             dailyCheckInCount = dailyCheckInCount
         )
@@ -144,32 +153,61 @@ class GoalsViewModel(application: Application) : AndroidViewModel(application) {
             .toFloat()
     }
 
-    private fun missedDatesForGoal(
-        goal: GoalUiModel,
-        checkIns: List<CheckInEntity>,
-        today: LocalDate
-    ): List<LocalDate> {
-        val lastDate = minOf(goal.endDate, today.minusDays(1))
-        if (lastDate.isBefore(goal.startDate)) return emptyList()
-
-        val totalsByDate = checkIns
-            .asSequence()
-            .filter { it.goalId == goal.id }
-            .groupBy { LocalDate.parse(it.entryDate) }
-            .mapValues { (_, entries) -> entries.sumOf { it.value.toDouble() }.toFloat() }
-
-        return generateSequence(goal.startDate) { current ->
-            current.plusDays(1).takeIf { !it.isAfter(lastDate) }
-        }.filter { date ->
-            (totalsByDate[date] ?: 0f) < goal.targetValue
-        }.toList()
-    }
-
     private fun matchesPeriod(type: String, entryDate: LocalDate, today: LocalDate): Boolean {
         return when (GoalType.valueOf(type)) {
             GoalType.DAILY -> entryDate == today
             GoalType.MONTHLY -> entryDate.year == today.year && entryDate.month == today.month
             GoalType.YEARLY -> entryDate.year == today.year
+        }
+    }
+}
+
+private fun buildReportEntries(
+    goals: List<GoalUiModel>,
+    checkIns: List<CheckInEntity>,
+    today: LocalDate
+): List<GoalReportEntry> {
+    val actualByGoalAndDate = checkIns
+        .groupBy { it.goalId to LocalDate.parse(it.entryDate) }
+        .mapValues { (_, entries) -> entries.sumOf { it.value.toDouble() }.toFloat() }
+
+    return goals.flatMap { goal ->
+        val lastDate = minOf(goal.endDate, today)
+        if (lastDate.isBefore(goal.startDate)) {
+            emptyList()
+        } else {
+            generateSequence(goal.startDate) { current ->
+                current.plusDays(1).takeIf { !it.isAfter(lastDate) }
+            }.map { date ->
+                GoalReportEntry(
+                    goalId = goal.id,
+                    goalName = goal.finalDisplayName,
+                    goalCategory = goal.category,
+                    goalType = goal.type,
+                    date = date,
+                    actualValue = actualByGoalAndDate[goal.id to date] ?: 0f,
+                    expectedValue = expectedValueForDate(goal, date),
+                    reminderEnabled = goal.reminderEnabled
+                )
+            }.toList()
+        }
+    }.sortedBy { it.date }
+}
+
+private fun expectedValueForDate(goal: GoalUiModel, date: LocalDate): Float {
+    return when (goal.type) {
+        GoalType.DAILY -> goal.targetValue
+        GoalType.MONTHLY -> {
+            val periodStart = maxOf(goal.startDate, date.withDayOfMonth(1))
+            val periodEnd = minOf(goal.endDate, date.withDayOfMonth(date.lengthOfMonth()))
+            val activeDays = java.time.temporal.ChronoUnit.DAYS.between(periodStart, periodEnd).toInt() + 1
+            if (activeDays > 0) goal.targetValue / activeDays else goal.targetValue
+        }
+        GoalType.YEARLY -> {
+            val periodStart = maxOf(goal.startDate, date.withDayOfYear(1))
+            val periodEnd = minOf(goal.endDate, date.withDayOfYear(date.lengthOfYear()))
+            val activeDays = java.time.temporal.ChronoUnit.DAYS.between(periodStart, periodEnd).toInt() + 1
+            if (activeDays > 0) goal.targetValue / activeDays else goal.targetValue
         }
     }
 }
@@ -193,6 +231,7 @@ private fun GoalEntity.toUiModel(currentValue: Float): GoalUiModel {
         unit = if (goalCategory == GoalCategory.WATER) "glasses" else unit,
         startDate = LocalDate.parse(startDate),
         endDate = LocalDate.parse(endDate),
+        createdAt = LocalDateTime.parse(createdAt),
         glassSizeMl = glassSizeMl,
         wakeupTime = wakeupTime?.let { LocalTime.parse(it) },
         sleepTime = sleepTime?.let { LocalTime.parse(it) },
@@ -214,6 +253,7 @@ private fun GoalUiModel.toEntity(): GoalEntity {
         unit = if (category == GoalCategory.WATER) "glasses" else unit,
         startDate = startDate.toString(),
         endDate = endDate.toString(),
+        createdAt = createdAt.toString(),
         glassSizeMl = glassSizeMl,
         wakeupTime = wakeupTime?.toString(),
         sleepTime = sleepTime?.toString(),

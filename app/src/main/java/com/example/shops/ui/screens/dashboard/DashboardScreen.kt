@@ -11,19 +11,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.shops.model.GoalCategory
 import com.example.shops.model.GoalType
 import com.example.shops.model.GoalUiModel
 import com.example.shops.model.UserProfileUiModel
+import com.example.shops.ui.components.AppScreenHeader
 import com.example.shops.ui.components.EmptyState
 import com.example.shops.ui.components.GoalCard
+import com.example.shops.ui.components.HighlightBanner
+import com.example.shops.ui.components.SectionLabel
 import com.example.shops.ui.components.StatCard
 import com.example.shops.ui.components.profile.DashboardProfileHeader
 import com.example.shops.ui.theme.ShopsTheme
@@ -48,6 +49,16 @@ fun DashboardScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(vertical = 20.dp)
     ) {
+        item {
+            AppScreenHeader(
+                title = "Progress at a glance",
+                subtitle = if (profile?.name.isNullOrBlank()) {
+                    "Track your health routines, savings, and daily habits in one place."
+                } else {
+                    "Welcome back, ${profile?.name}. Here is how today's goals are shaping up."
+                }
+            )
+        }
         item { DashboardProfileHeader(profile = profile, onOpenProfile = onOpenProfile) }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -57,23 +68,16 @@ fun DashboardScreen(
             }
         }
 //        item {
-//            androidx.compose.material3.Card(
-//                modifier = Modifier.fillMaxWidth(),
-//                shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
-//            ) {
-//                Row(
-//                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-//                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-//                ) {
-//                    StatCard("Daily Check-in", dailyCheckInCount.toString(), Icons.Rounded.TaskAlt, Modifier.weight(1f))
-//                    Button(onClick = onOpenCheckIn, modifier = Modifier.weight(1f)) {
-//                        Text("Open Check-in")
-//                    }
-//                }
-//            }
+//            HighlightBanner(
+//                icon = Icons.Rounded.TaskAlt,
+//                title = "Daily check-in is ready",
+//                description = "You have $dailyCheckInCount logged actions so far. Review active goals and capture progress before the day ends.",
+//                actionLabel = "Open check-in",
+//                onAction = onOpenCheckIn
+//            )
 //        }
         item {
-            Text("Today's Focus", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            SectionLabel("Today's Focus")
         }
         if (activeGoals.isEmpty()) {
             item {
