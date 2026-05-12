@@ -19,7 +19,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Snooze
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -29,6 +31,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,6 +58,7 @@ class ReminderPopupActivity : ComponentActivity() {
         setContent {
             ShopsTheme {
                 val uiState by goalsViewModel.uiState.collectAsState()
+                var confirmCompletion by remember { mutableStateOf(false) }
                 val goalId = intent.getStringExtra(ReminderReceiver.EXTRA_GOAL_ID).orEmpty()
                 val reminderId = intent.getStringExtra(ReminderReceiver.EXTRA_REMINDER_ID) ?: goalId
                 val title = intent.getStringExtra(ReminderReceiver.EXTRA_NOTIFICATION_TITLE).orEmpty()
@@ -66,26 +72,83 @@ class ReminderPopupActivity : ComponentActivity() {
                     prompt = prompt,
                     dailyCheckInCount = uiState.dailyCheckInCount,
                     onDone = {
+//                        confirmCompletion = true
                         goal?.let { goalsViewModel.incrementGoal(it) }
                         NotificationManagerCompat.from(this@ReminderPopupActivity).cancel(reminderId.hashCode())
                         finish()
                     },
+//                    onLater = {
+//                        val target = goal?.finalDisplayName ?: prompt.ifBlank { "Target" }
+//                        ReminderScheduler.scheduleSnoozeReminder(
+//                            context = this@ReminderPopupActivity,
+//                            goalId = goalId,
+//                            reminderId = reminderId,
+//                            message = target,
+//                            delayMinutes = 5L
+//                        )
+//                        NotificationManagerCompat.from(this@ReminderPopupActivity).cancel(reminderId.hashCode())
+//                        finish()
+//                    },
                     onLater = {
+
+                        val prefs = getSharedPreferences("reminder_prefs", MODE_PRIVATE)
+
+                        val snoozeCountKey = "snooze_count_$reminderId"
+                        val currentCount = prefs.getInt(snoozeCountKey, 0)
+
+                        val delayMinutes = when (currentCount) {
+                            0 -> 2L
+                            1 -> 3L
+                            else -> 5L
+                        }
+
                         val target = goal?.finalDisplayName ?: prompt.ifBlank { "Target" }
+
                         ReminderScheduler.scheduleSnoozeReminder(
                             context = this@ReminderPopupActivity,
                             goalId = goalId,
                             reminderId = reminderId,
                             message = target,
-                            delayMinutes = 5L
+                            delayMinutes = delayMinutes
                         )
-                        NotificationManagerCompat.from(this@ReminderPopupActivity).cancel(reminderId.hashCode())
+
+                        prefs.edit()
+                            .putInt(snoozeCountKey, currentCount + 1)
+                            .apply()
+
+                        NotificationManagerCompat
+                            .from(this@ReminderPopupActivity)
+                            .cancel(reminderId.hashCode())
+
                         finish()
                     },
                     onClose = {
                         finish()
                     }
                 )
+
+                if (confirmCompletion) {
+                    AlertDialog(
+                        onDismissRequest = { confirmCompletion = false },
+                        title = { Text("Confirm completion") },
+                        text = { Text("Mark \"${goal?.finalDisplayName ?: prompt.ifBlank { "Target" }}\" as complete for today? Any remaining reminders for today will be stopped.") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                goal?.let { goalsViewModel.completeGoal(it) }
+                                NotificationManagerCompat.from(this@ReminderPopupActivity).cancel(reminderId.hashCode())
+                                confirmCompletion = false
+                                finish()
+                            }) {
+                                Text("Confirm")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { confirmCompletion = false }) {
+                                Text("Cancel")
+                            }
+                        }
+                    )
+                }
             }
         }
     }

@@ -17,6 +17,7 @@ import com.example.shops.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -29,47 +30,58 @@ class ReminderReceiver : BroadcastReceiver() {
         val notificationBody = intent.getStringExtra(EXTRA_NOTIFICATION_BODY)
             ?: "Time to check in for $goalName."
 
-        val popupIntent = Intent(context, ReminderPopupActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(EXTRA_GOAL_ID, goalId)
-            putExtra(EXTRA_GOAL_NAME, goalName)
-            putExtra(EXTRA_REMINDER_ID, reminderId)
-            putExtra(EXTRA_NOTIFICATION_TITLE, notificationTitle)
-            putExtra(EXTRA_NOTIFICATION_BODY, notificationBody)
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            reminderId.hashCode(),
-            popupIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(notificationTitle)
-            .setContentText(notificationBody)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(notificationBody))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setContentIntent(pendingIntent)
-            .setFullScreenIntent(pendingIntent, true)
-            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
-            .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
-            .setAutoCancel(true)
-            .build()
-
         val pendingResult = goAsync()
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ActivityCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            NotificationManagerCompat.from(context).notify(reminderId.hashCode(), notification)
-        }
-
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                GoalDatabase.getInstance(context).goalDao().getGoalById(goalId)?.let { goalEntity ->
-                    ReminderScheduler.syncReminders(context.applicationContext, goalEntity.toReminderUiModel())
+                val goalEntity = GoalDatabase.getInstance(context).goalDao().getGoalById(goalId)
+                if (goalEntity == null) {
+                    return@launch
                 }
+
+                val today = LocalDate.now().toString()
+                val checkIns = GoalDatabase.getInstance(context).goalDao().getCheckInsForGoalOnDate(goalId, today)
+                val totalCompletedToday = checkIns.sumOf { it.value.toDouble() }.toFloat()
+
+                if (totalCompletedToday >= goalEntity.targetValue) {
+                    ReminderScheduler.cancelAllRemindersForGoal(context.applicationContext, goalId)
+                    return@launch
+                }
+
+                val popupIntent = Intent(context, ReminderPopupActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra(EXTRA_GOAL_ID, goalId)
+                    putExtra(EXTRA_GOAL_NAME, goalName)
+                    putExtra(EXTRA_REMINDER_ID, reminderId)
+                    putExtra(EXTRA_NOTIFICATION_TITLE, notificationTitle)
+                    putExtra(EXTRA_NOTIFICATION_BODY, notificationBody)
+                }
+                val pendingIntent = PendingIntent.getActivity(
+                    context,
+                    reminderId.hashCode(),
+                    popupIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                    .setSmallIcon(R.mipmap.ic_launcher)
+                    .setContentTitle(notificationTitle)
+                    .setContentText(notificationBody)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(notificationBody))
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(NotificationCompat.CATEGORY_ALARM)
+                    .setContentIntent(pendingIntent)
+                    .setFullScreenIntent(pendingIntent, true)
+                    .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
+                    .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
+                    .setAutoCancel(true)
+                    .build()
+
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ActivityCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    NotificationManagerCompat.from(context).notify(reminderId.hashCode(), notification)
+                }
+                ReminderScheduler.syncReminders(context.applicationContext, goalEntity.toReminderUiModel())
             } finally {
                 pendingResult.finish()
             }

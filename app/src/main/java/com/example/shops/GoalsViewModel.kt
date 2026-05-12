@@ -113,6 +113,7 @@ class GoalsViewModel(application: Application) : AndroidViewModel(application) {
                     value = remaining
                 )
             )
+            ReminderScheduler.cancelAllRemindersForGoal(getApplication(), goal.id)
         }
     }
 

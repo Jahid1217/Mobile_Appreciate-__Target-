@@ -88,6 +88,9 @@ interface GoalDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCheckIn(checkIn: CheckInEntity)
 
+    @Query("SELECT * FROM check_ins WHERE goal_id = :goalId AND entry_date = :entryDate")
+    suspend fun getCheckInsForGoalOnDate(goalId: String, entryDate: String): List<CheckInEntity>
+
     @Query("DELETE FROM goals WHERE id = :goalId")
     suspend fun deleteGoal(goalId: String)
 }
